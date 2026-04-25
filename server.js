@@ -15,13 +15,13 @@ const QB_ENV           = process.env.QB_ENVIRONMENT || 'sandbox';
 const QB_BASE_URL      = QB_ENV === 'production' ? 'https://quickbooks.api.intuit.com' : 'https://sandbox-quickbooks.api.intuit.com';
 const QB_TOKEN_URL     = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 const QB_AUTH_URL      = 'https://appcenter.intuit.com/connect/oauth2';
-const ADMIN_KEY        = process.env.ADMIN_KEY || 'netbox-admin-2024';
+const ADMIN_KEY        = process.env.ADMIN_KEY || 'NTXnetboxshop2026';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 let tokenStore = { accessToken: process.env.QB_ACCESS_TOKEN || null, refreshToken: process.env.QB_REFRESH_TOKEN || null, realmId: process.env.QB_REALM_ID || null };
 
-// QB Auth
+// ── QB Auth ───────────────────────────────────────────────
 app.get('/qb/connect', (req, res) => {
   const p = new URLSearchParams({ client_id: QB_CLIENT_ID, scope: 'com.intuit.quickbooks.accounting com.intuit.quickbooks.payment', redirect_uri: QB_REDIRECT_URI, response_type: 'code', state: 'nb' });
   res.redirect(`${QB_AUTH_URL}?${p}`);
@@ -65,12 +65,38 @@ async function createQBInvoice(order) {
     customer = cr.Customer;
   }
   const lines = order.products.map((p, i) => ({ Id: String(i+1), LineNum: i+1, Description: p.nombre + (p.url ? '\n' + p.url : ''), Amount: (parseFloat(p.precio)||0)*(parseInt(p.qty)||1), DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: parseInt(p.qty)||1, UnitPrice: parseFloat(p.precio)||0 } }));
-  lines.push({ Id: String(order.products.length+1), LineNum: order.products.length+1, Description: 'Recargo de servicio Netbox Corp (5%)', Amount: order.recargo, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.recargo } });
+  lines.push({ Id: String(order.products.length+1), LineNum: order.products.length+1, Description: 'Sales Tax Florida (7%)', Amount: order.salesTax || 0, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.salesTax || 0 } });
+  lines.push({ Id: String(order.products.length+2), LineNum: order.products.length+2, Description: 'Recargo de servicio Netbox Corp (5%)', Amount: order.recargo, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.recargo } });
   const inv = await qb('POST', '/invoice?minorversion=65&include=invoiceLink', { CustomerRef: { value: customer.Id }, BillEmail: { Address: c.mail }, EmailStatus: 'NeedToSend', Line: lines, CustomerMemo: { value: 'Pedido ' + order.id + ' — Suite ' + c.suite }, PrivateNote: 'Cedula: ' + c.cedula });
   return inv.Invoice;
 }
 
-// Create order
+// ── AUTO FETCH PRODUCT NAME ───────────────────────────────
+app.get('/api/product-name', async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: 'URL requerida' });
+  try {
+    const response = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+      timeout: 8000,
+      maxRedirects: 5
+    });
+    const html = response.data;
+    // Try og:title, then twitter:title, then <title>
+    const og = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+             || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+    const tw = html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i);
+    const ti = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const raw = (og && og[1]) || (tw && tw[1]) || (ti && ti[1]) || '';
+    // Clean up — remove site name suffix
+    const name = raw.replace(/\s*[\|\-–—·•]\s*.{0,40}$/, '').replace(/&amp;/g,'&').replace(/&#39;/g,"'").trim();
+    res.json({ name: name || null });
+  } catch (e) {
+    res.json({ name: null, error: e.message });
+  }
+});
+
+// ── CREATE ORDER ──────────────────────────────────────────
 app.post('/api/orders', async (req, res) => {
   const order = req.body;
   try {
@@ -88,7 +114,7 @@ app.post('/api/orders', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Get orders for client (by mail + suite)
+// ── GET ORDERS BY CLIENT ──────────────────────────────────
 app.get('/api/orders/client', async (req, res) => {
   const { mail, suite } = req.query;
   if (!mail || !suite) return res.status(400).json({ error: 'mail y suite requeridos' });
@@ -98,7 +124,7 @@ app.get('/api/orders/client', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Get all orders (admin)
+// ── GET ALL ORDERS (ADMIN) ────────────────────────────────
 app.get('/api/orders', async (req, res) => {
   if (req.headers['x-admin-key'] !== ADMIN_KEY) return res.status(401).json({ error: 'No autorizado' });
   try {
@@ -107,7 +133,7 @@ app.get('/api/orders', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Update order (admin)
+// ── UPDATE ORDER (ADMIN) ──────────────────────────────────
 app.patch('/api/orders/:id', async (req, res) => {
   if (req.headers['x-admin-key'] !== ADMIN_KEY) return res.status(401).json({ error: 'No autorizado' });
   const patch = {};
@@ -121,7 +147,7 @@ app.patch('/api/orders/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// QB Webhook - auto-update last 4 digits when payment received
+// ── QB WEBHOOK ────────────────────────────────────────────
 app.post('/qb/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const payload = JSON.parse(req.body.toString());
@@ -133,7 +159,6 @@ app.post('/qb/webhook', express.raw({ type: 'application/json' }), async (req, r
           const invoiceRef = payment?.Payment?.Line?.[0]?.LinkedTxn?.[0]?.TxnId;
           if (invoiceRef) {
             await supabase.from('orders').update({ status: 'purchased', last_four: lastFour }).eq('invoice_id', invoiceRef);
-            console.log('Payment processed. Invoice:', invoiceRef, '| Last 4:', lastFour);
           }
         }
       }
@@ -142,8 +167,10 @@ app.post('/qb/webhook', express.raw({ type: 'application/json' }), async (req, r
   res.status(200).json({ received: true });
 });
 
+// ── STATUS ────────────────────────────────────────────────
 app.get('/api/status', (req, res) => res.json({ qbConnected: !!(tokenStore.accessToken && tokenStore.realmId), environment: QB_ENV }));
 
+// ── START ─────────────────────────────────────────────────
 async function start() {
   try {
     const { data } = await supabase.from('settings').select('value').eq('key', 'qb_tokens').single();
@@ -151,23 +178,4 @@ async function start() {
   } catch (e) {}
   app.listen(process.env.PORT || 3000, () => console.log('Server running on port', process.env.PORT || 3000));
 }
-// Auto-fetch product name from URL
-app.get('/api/product-name', async (req, res) => {
-  const url = req.query.url;
-  if (!url) return res.status(400).json({ error: 'URL requerida' });
-  try {
-    const response = await axios.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)' },
-      timeout: 8000
-    });
-    const html = response.data;
-    // Try og:title first, then title tag
-    const og = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-    const title = og ? og[1] : (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1];
-    const name = (title || '').replace(/\s*[\|\-–—]\s*.+$/, '').trim();
-    res.json({ name: name || null });
-  } catch (e) {
-    res.json({ name: null, error: e.message });
-  }
-});
 start();
