@@ -151,4 +151,23 @@ async function start() {
   } catch (e) {}
   app.listen(process.env.PORT || 3000, () => console.log('Server running on port', process.env.PORT || 3000));
 }
+// Auto-fetch product name from URL
+app.get('/api/product-name', async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: 'URL requerida' });
+  try {
+    const response = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)' },
+      timeout: 8000
+    });
+    const html = response.data;
+    // Try og:title first, then title tag
+    const og = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+    const title = og ? og[1] : (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1];
+    const name = (title || '').replace(/\s*[\|\-–—]\s*.+$/, '').trim();
+    res.json({ name: name || null });
+  } catch (e) {
+    res.json({ name: null, error: e.message });
+  }
+});
 start();
