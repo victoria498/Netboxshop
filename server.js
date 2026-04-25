@@ -23,7 +23,7 @@ let tokenStore = { accessToken: process.env.QB_ACCESS_TOKEN || null, refreshToke
 
 // QB Auth
 app.get('/qb/connect', (req, res) => {
-  const p = new URLSearchParams({ client_id: QB_CLIENT_ID, scope: 'com.intuit.quickbooks.accounting', redirect_uri: QB_REDIRECT_URI, response_type: 'code', state: 'nb' });
+  const p = new URLSearchParams({ client_id: QB_CLIENT_ID, scope: 'com.intuit.quickbooks.accounting com.intuit.quickbooks.payment', redirect_uri: QB_REDIRECT_URI, response_type: 'code', state: 'nb' });
   res.redirect(`${QB_AUTH_URL}?${p}`);
 });
 
