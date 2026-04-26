@@ -288,6 +288,7 @@ app.patch('/api/orders/:id', async (req, res) => {
   if (req.body.qbLink)     patch.qb_link     = req.body.qbLink;
   if (req.body.lastFour)   patch.last_four   = req.body.lastFour;
   if (req.body.adminNotes) patch.admin_notes = req.body.adminNotes;
+  if (req.body.precioReal) patch.precio_real = req.body.precioReal;
   try {
     await supabase.from('orders').update(patch).eq('id', req.params.id);
 
@@ -457,7 +458,8 @@ function emailPedidoRechazado(client, order, razon, notas) {
   const reactivarUrl = `https://netboxshop.netlify.app/?reactivar=${order.id}&mail=${encodeURIComponent(client.mail)}`;
   const razonTextos = {
     'no_existe': 'El producto no existe o no está disponible en la tienda seleccionada.',
-    'precio': 'El precio final del producto no coincide con el monto indicado en tu solicitud.',
+    'no_eeuu': 'El producto no corresponde a una tienda de EEUU.',
+    'precio': order.precio_real ? `El precio real del producto es <strong>USD ${parseFloat(order.precio_real).toFixed(2)}</strong>. Si confirmás este nuevo monto, reactivaremos tu pedido.` : 'El precio final del producto no coincide con el monto indicado en tu solicitud.',
     'stock': 'El producto está agotado (Out of Stock) en este momento.'
   };
   const razonTexto = razonTextos[razon] || razon;
@@ -499,7 +501,22 @@ app.get('/api/orders/reactivar', async (req, res) => {
     const { data } = await supabase.from('orders').select('*').eq('id', id).single();
     if (!data) return res.status(404).json({ error: 'Pedido no encontrado' });
     if (data.client.mail.toLowerCase() !== mail.toLowerCase()) return res.status(403).json({ error: 'No autorizado' });
-    await supabase.from('orders').update({ status: 'processing', admin_notes: (data.admin_notes || '') + ' [Cliente confirmó nuevo precio]' }).eq('id', id);
+    // Recalculate totals with new price if available
+    const updateData = { status: 'processing', admin_notes: (data.admin_notes || '') + ' [Cliente confirmó nuevo precio]' };
+    if (data.precio_real) {
+      const precioReal = parseFloat(data.precio_real);
+      const recargo = Math.round(precioReal * 0.08 * 100) / 100;
+      const total = Math.round((precioReal + recargo) * 100) / 100;
+      // Update first product price
+      const products = data.products || [];
+      if (products.length > 0) { products[0].precio = precioReal; }
+      updateData.subtotal = precioReal;
+      updateData.recargo = recargo;
+      updateData.total = total;
+      updateData.products = products;
+    }
+    updateData.reactivado = true;
+    await supabase.from('orders').update(updateData).eq('id', id);
     res.send(`<html><body style="font-family:system-ui;max-width:500px;margin:60px auto;text-align:center;padding:20px">
       <div style="background:#1A3C8F;padding:24px;border-radius:12px;color:#fff;margin-bottom:20px">
         <h2 style="margin:0">netbox<span style="color:#93C5FD">shop</span></h2>
