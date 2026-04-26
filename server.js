@@ -58,7 +58,7 @@ function emailPedidoEnProceso(client, order) {
         <tbody>${productos}</tbody>
       </table>
       <div style="margin-top:16px;text-align:right">
-        <div style="color:#64748B;font-size:14px">Sales Tax Florida (7%): USD ${(order.salesTax||0).toFixed(2)}</div>
+  
         <div style="color:#64748B;font-size:14px">Recargo Netbox (5%): USD ${(order.recargo||0).toFixed(2)}</div>
         <div style="font-size:18px;font-weight:800;color:#1A3C8F;margin-top:8px">Total: USD ${(order.total||0).toFixed(2)}</div>
       </div>
