@@ -289,6 +289,7 @@ app.patch('/api/orders/:id', async (req, res) => {
   if (req.body.lastFour)   patch.last_four   = req.body.lastFour;
   if (req.body.adminNotes) patch.admin_notes = req.body.adminNotes;
   if (req.body.precioReal) patch.precio_real = req.body.precioReal;
+  if (req.body.tracking)   patch.tracking    = req.body.tracking;
   try {
     await supabase.from('orders').update(patch).eq('id', req.params.id);
 
@@ -308,6 +309,9 @@ app.patch('/api/orders/:id', async (req, res) => {
       const client = order.client;
       if (req.body.status === 'approved') {
         await sendEmail({ to: client.mail, subject: '🎉 Tu pedido fue aprobado — Netbox Shop', html: emailPedidoAprobado(client, order) });
+      } else if (req.body.status === 'purchased') {
+        const orderWithTracking = Object.assign({}, order, { tracking: req.body.tracking });
+        await sendEmail({ to: client.mail, subject: '🎉 ¡Pago confirmado! Tu compra está en camino — Netbox Shop', html: emailPagoConfirmado(client, orderWithTracking) });
       } else if (req.body.status === 'rejected' && req.body.razon) {
         const orderWithPrice = Object.assign({}, order, { precio_real: req.body.precioReal });
         await sendEmail({ to: client.mail, subject: '❌ Tu pedido no pudo procesarse — Netbox Shop', html: emailPedidoRechazado(client, orderWithPrice, req.body.razon, req.body.adminNotes) });
@@ -481,6 +485,40 @@ function emailLinkPago(client, order) {
         <a href="${order.qb_link}" style="background:#2563EB;color:#fff;padding:14px 32px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block;font-size:16px">Realizar pago →</a>
       </p>
       <p style="color:#64748B;font-size:13px">Una vez confirmado el pago, Netbox realizará la compra en las próximas 48 horas.</p>
+    </div>
+    <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
+      netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
+    </div>
+  </body></html>`;
+}
+
+
+function emailPagoConfirmado(client, order) {
+  const tracking = order.tracking || order.trackingCode || null;
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#0F172A">
+    <div style="background:#1A3C8F;padding:24px;border-radius:12px 12px 0 0;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:22px">netbox<span style="color:#93C5FD">shop</span></h1>
+    </div>
+    <div style="background:#fff;padding:28px;border:1px solid #E2E8F0;border-top:none">
+      <h2 style="color:#16A34A;margin-top:0">🎉 ¡Pago confirmado! Tu compra está en camino</h2>
+      <p>Hola <strong>${client.nombre}</strong>,</p>
+      <p>Recibimos tu pago y procedimos con la compra de tu pedido. Tu producto está en camino al warehouse de Netbox en Miami.</p>
+      <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:16px;margin:20px 0">
+        <strong>N° de pedido:</strong> ${order.id}<br/>
+        <strong>Suite:</strong> ${client.suite}<br/>
+        <strong>Total pagado:</strong> USD ${(order.total||0).toFixed(2)}
+      </div>
+      ${tracking ? `
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:16px;margin:20px 0;text-align:center">
+        <div style="font-size:12px;font-weight:700;color:#1E40AF;margin-bottom:6px">📦 NÚMERO DE TRACKING</div>
+        <div style="font-size:22px;font-weight:800;color:#1A3C8F;letter-spacing:1px">${tracking}</div>
+        <div style="font-size:12px;color:#64748B;margin-top:6px">Podés usar este número para rastrear tu envío</div>
+      </div>
+      ` : ''}
+      <div style="background:#F1F5F9;border-radius:8px;padding:14px 16px;font-size:13px;color:#64748B;line-height:1.7">
+        📋 <strong>¿Qué sigue?</strong><br/>
+        Tu producto llegará al warehouse de Netbox en Miami y luego será enviado a Uruguay. Te notificaremos cuando esté en camino.
+      </div>
     </div>
     <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
       netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
