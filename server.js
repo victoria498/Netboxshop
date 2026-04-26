@@ -293,6 +293,16 @@ app.patch('/api/orders/:id', async (req, res) => {
     await supabase.from('orders').update(patch).eq('id', req.params.id);
 
     // Send notification emails on status change
+    if (req.body.order) {
+      const order = req.body.order;
+      const client = order.client;
+
+      // Email when QB payment link is added manually
+      if (req.body.qbLink && client && client.mail) {
+        const linkOrder = Object.assign({}, order, { qb_link: req.body.qbLink });
+        await sendEmail({ to: client.mail, subject: '💳 Tu link de pago está listo — Netbox Shop', html: emailLinkPago(client, linkOrder) });
+      }
+    }
     if (req.body.status && req.body.order) {
       const order = req.body.order;
       const client = order.client;
@@ -451,6 +461,32 @@ function emailPedidoRechazado(client, order, razon, notas) {
 }
 
 
+
+
+function emailLinkPago(client, order) {
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#0F172A">
+    <div style="background:#1A3C8F;padding:24px;border-radius:12px 12px 0 0;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:22px">netbox<span style="color:#93C5FD">shop</span></h1>
+    </div>
+    <div style="background:#fff;padding:28px;border:1px solid #E2E8F0;border-top:none">
+      <h2 style="color:#1A3C8F;margin-top:0">💳 Tu link de pago está listo</h2>
+      <p>Hola <strong>${client.nombre}</strong>,</p>
+      <p>Tu pedido <strong>${order.id}</strong> fue aprobado y ya podés realizar el pago para que Netbox proceda con la compra.</p>
+      <div style="background:#EFF6FF;border-radius:8px;padding:16px;margin:20px 0">
+        <strong>N° de pedido:</strong> ${order.id}<br/>
+        <strong>Suite:</strong> ${client.suite}<br/>
+        <strong>Total a pagar:</strong> USD ${(order.total||0).toFixed(2)}
+      </div>
+      <p style="text-align:center;margin:28px 0">
+        <a href="${order.qb_link}" style="background:#2563EB;color:#fff;padding:14px 32px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block;font-size:16px">Realizar pago →</a>
+      </p>
+      <p style="color:#64748B;font-size:13px">Una vez confirmado el pago, Netbox realizará la compra en las próximas 48 horas.</p>
+    </div>
+    <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
+      netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
+    </div>
+  </body></html>`;
+}
 
 // REACTIVAR PEDIDO (from email link)
 app.get('/api/orders/reactivar', async (req, res) => {
