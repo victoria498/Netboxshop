@@ -322,6 +322,73 @@ app.post('/qb/webhook', express.raw({ type: 'application/json' }), async (req, r
   res.status(200).json({ received: true });
 });
 
+
+// FORGOT PASSWORD
+app.post('/api/clients/forgot-password', async (req, res) => {
+  const { mail } = req.body;
+  if (!mail) return res.status(400).json({ error: 'Mail requerido' });
+  try {
+    const { data } = await supabase.from('clients').select('id,nombre,mail').eq('mail', mail.toLowerCase()).maybeSingle();
+    if (!data) return res.status(404).json({ error: 'No encontramos una cuenta con ese mail.' });
+
+    // Generate reset token
+    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const expires = new Date(Date.now() + 3600000).toISOString(); // 1 hour
+
+    // Save token to settings table
+    await supabase.from('settings').upsert({ key: 'reset_' + data.id, value: JSON.stringify({ token, expires, mail: mail.toLowerCase() }) });
+
+    // Send reset email
+    const resetUrl = `https://netboxshop.netlify.app/?reset_token=${token}&mail=${encodeURIComponent(mail.toLowerCase())}`;
+    const html = `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#0F172A">
+      <div style="background:#1A3C8F;padding:24px;border-radius:12px 12px 0 0;text-align:center">
+        <h1 style="color:#fff;margin:0;font-size:22px">netbox<span style="color:#93C5FD">shop</span></h1>
+      </div>
+      <div style="background:#fff;padding:28px;border:1px solid #E2E8F0;border-top:none">
+        <h2 style="color:#1A3C8F;margin-top:0">🔑 Restablecer contraseña</h2>
+        <p>Hola <strong>${data.nombre}</strong>,</p>
+        <p>Recibimos una solicitud para restablecer tu contraseña. Hacé clic en el botón para crear una nueva:</p>
+        <p style="text-align:center;margin:28px 0">
+          <a href="${resetUrl}" style="background:#2563EB;color:#fff;padding:12px 28px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block">Restablecer contraseña →</a>
+        </p>
+        <p style="color:#64748B;font-size:13px">Este link vence en 1 hora. Si no solicitaste esto, podés ignorar este mail.</p>
+      </div>
+      <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
+        netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
+      </div>
+    </body></html>`;
+
+    await sendEmail({ to: mail.toLowerCase(), subject: '🔑 Restablecer contraseña — Netbox Shop', html });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// RESET PASSWORD
+app.post('/api/clients/reset-password', async (req, res) => {
+  const { mail, token, password } = req.body;
+  if (!mail || !token || !password) return res.status(400).json({ error: 'Datos incompletos' });
+  try {
+    // Find client
+    const { data: client } = await supabase.from('clients').select('id').eq('mail', mail.toLowerCase()).maybeSingle();
+    if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+
+    // Verify token
+    const { data: setting } = await supabase.from('settings').select('value').eq('key', 'reset_' + client.id).maybeSingle();
+    if (!setting) return res.status(400).json({ error: 'Link inválido o expirado.' });
+
+    const { token: savedToken, expires } = JSON.parse(setting.value);
+    if (savedToken !== token) return res.status(400).json({ error: 'Link inválido.' });
+    if (new Date(expires) < new Date()) return res.status(400).json({ error: 'El link expiró. Solicitá uno nuevo.' });
+
+    // Update password
+    await supabase.from('clients').update({ password }).eq('id', client.id);
+    // Delete reset token
+    await supabase.from('settings').delete().eq('key', 'reset_' + client.id);
+
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/status', (req, res) => res.json({ qbConnected: !!(tokenStore.accessToken && tokenStore.realmId), environment: QB_ENV }));
 
 async function start() {
