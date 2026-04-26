@@ -449,3 +449,63 @@ function emailPedidoRechazado(client, order, razon, notas) {
     </div>
   </body></html>`;
 }
+
+
+
+// REACTIVAR PEDIDO (from email link)
+app.get('/api/orders/reactivar', async (req, res) => {
+  const { id, mail } = req.query;
+  if (!id || !mail) return res.status(400).send('Datos incompletos');
+  try {
+    const { data } = await supabase.from('orders').select('*').eq('id', id).single();
+    if (!data) return res.status(404).send('Pedido no encontrado');
+    if (data.client.mail.toLowerCase() !== mail.toLowerCase()) return res.status(403).send('No autorizado');
+
+    const updateData = { status: 'processing', reactivado: true, admin_notes: (data.admin_notes || '') + ' [Cliente confirmó nuevo precio]' };
+
+    if (data.precio_real) {
+      const precioReal = parseFloat(data.precio_real);
+      const recargo = Math.round(precioReal * 0.08 * 100) / 100;
+      const total = Math.round((precioReal + recargo) * 100) / 100;
+      const products = data.products ? [...data.products] : [];
+      if (products.length > 0) { products[0].precio = precioReal; }
+      updateData.subtotal = precioReal;
+      updateData.recargo = recargo;
+      updateData.total = total;
+      updateData.products = products;
+    }
+
+    await supabase.from('orders').update(updateData).eq('id', id);
+
+    const ns = updateData.subtotal || data.subtotal || 0;
+    const nr = updateData.recargo || data.recargo || 0;
+    const nt = updateData.total || data.total || 0;
+
+    res.send(`<html><body style="font-family:system-ui;max-width:500px;margin:60px auto;text-align:center;padding:20px">
+      <div style="background:#1A3C8F;padding:24px;border-radius:12px;color:#fff;margin-bottom:20px"><h2 style="margin:0">netbox<span style="color:#93C5FD">shop</span></h2></div>
+      <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:12px;padding:24px;margin-bottom:16px">
+        <div style="font-size:40px;margin-bottom:12px">✅</div>
+        <h2 style="color:#16A34A;margin-top:0">¡Pedido reactivado!</h2>
+        <p style="color:#64748B">Confirmaste el nuevo precio. Tu pedido fue reactivado y el equipo de Netbox lo procesará a la brevedad.</p>
+        <div style="background:#fff;border-radius:8px;padding:16px;margin:16px 0;text-align:left">
+          <div style="font-size:12px;color:#64748B;margin-bottom:8px">RESUMEN DEL PEDIDO</div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:#64748B;margin-bottom:4px"><span>Precio del producto</span><span>USD ${ns.toFixed(2)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:#64748B;margin-bottom:8px"><span>Comisión Netbox (8%)</span><span>USD ${nr.toFixed(2)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;color:#1A3C8F"><span>Total a pagar</span><span>USD ${nt.toFixed(2)}</span></div>
+        </div>
+      </div>
+      <a href="https://netboxshop.netlify.app" style="background:#2563EB;color:#fff;padding:12px 24px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block">Ir a mis pedidos →</a>
+    </body></html>`);
+  } catch (e) { res.status(500).send('Error: ' + e.message); }
+});
+
+app.get('/api/status', (req, res) => res.json({ qbConnected: !!(tokenStore.accessToken && tokenStore.realmId), environment: QB_ENV }));
+
+async function start() {
+  try {
+    const { data } = await supabase.from('settings').select('value').eq('key', 'qb_tokens').single();
+    if (data && data.value) tokenStore = Object.assign({}, tokenStore, JSON.parse(data.value));
+  } catch (e) {}
+  app.listen(process.env.PORT || 3000, () => console.log('Server running on port', process.env.PORT || 3000));
+}
+start();
