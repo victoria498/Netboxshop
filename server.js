@@ -16,6 +16,9 @@ const QB_BASE_URL      = QB_ENV === 'production' ? 'https://quickbooks.api.intui
 const QB_TOKEN_URL     = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 const QB_AUTH_URL      = 'https://appcenter.intuit.com/connect/oauth2';
 const ADMIN_KEY        = process.env.ADMIN_KEY || 'NTXnetboxshop2026';
+const RESEND_API_KEY   = process.env.RESEND_API_KEY;
+const FROM_EMAIL       = process.env.FROM_EMAIL || 'shop@netboxworld.com';
+const NETBOX_EMAIL     = 'shop@netboxworld.com';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -24,6 +27,112 @@ let tokenStore = {
   refreshToken: process.env.QB_REFRESH_TOKEN || null,
   realmId:      process.env.QB_REALM_ID      || null
 };
+
+// EMAIL HELPER
+async function sendEmail({ to, subject, html }) {
+  if (!RESEND_API_KEY) return console.log('No RESEND_API_KEY set');
+  try {
+    await axios.post('https://api.resend.com/emails', { from: `Netbox Shop <${FROM_EMAIL}>`, to, subject, html }, { headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' } });
+    console.log('Email sent to', to);
+  } catch (e) { console.error('Email error:', e.response?.data || e.message); }
+}
+
+function emailPedidoEnProceso(client, order) {
+  const productos = order.products.map(p => `<tr><td style="padding:8px;border-bottom:1px solid #eee">${p.nombre}${p.detalle ? ' - ' + p.detalle : ''}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:center">x${p.qty}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">USD ${((parseFloat(p.precio)||0)*(parseInt(p.qty)||1)).toFixed(2)}</td></tr>`).join('');
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#0F172A">
+    <div style="background:#1A3C8F;padding:24px;border-radius:12px 12px 0 0;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:22px">netbox<span style="color:#93C5FD">shop</span></h1>
+      <p style="color:rgba(255,255,255,.7);margin:4px 0 0">Tu courier de confianza desde 1997</p>
+    </div>
+    <div style="background:#fff;padding:28px;border:1px solid #E2E8F0;border-top:none">
+      <h2 style="color:#1A3C8F;margin-top:0">✅ ¡Recibimos tu solicitud!</h2>
+      <p>Hola <strong>${client.nombre}</strong>,</p>
+      <p>Recibimos exitosamente tu solicitud de compra. Nuestro equipo evaluará la información y si cumple con los requisitos de la Dirección Nacional de Aduana, te enviaremos un link de pago para proceder.</p>
+      <div style="background:#EFF6FF;border-radius:8px;padding:16px;margin:20px 0">
+        <strong style="color:#1A3C8F">N° de pedido:</strong> ${order.id}<br/>
+        <strong style="color:#1A3C8F">Suite:</strong> ${client.suite}
+      </div>
+      <h3 style="color:#1A3C8F">Productos solicitados</h3>
+      <table width="100%" style="border-collapse:collapse">
+        <thead><tr style="background:#EFF6FF"><th style="padding:8px;text-align:left">Producto</th><th style="padding:8px">Cant.</th><th style="padding:8px;text-align:right">Precio</th></tr></thead>
+        <tbody>${productos}</tbody>
+      </table>
+      <div style="margin-top:16px;text-align:right">
+        <div style="color:#64748B;font-size:14px">Sales Tax Florida (7%): USD ${(order.salesTax||0).toFixed(2)}</div>
+        <div style="color:#64748B;font-size:14px">Recargo Netbox (5%): USD ${(order.recargo||0).toFixed(2)}</div>
+        <div style="font-size:18px;font-weight:800;color:#1A3C8F;margin-top:8px">Total: USD ${(order.total||0).toFixed(2)}</div>
+      </div>
+      <p style="color:#64748B;font-size:12px;margin-top:24px">⚠️ El precio no incluye costos adicionales de envío interno por parte del proveedor.</p>
+    </div>
+    <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
+      netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
+    </div>
+  </body></html>`;
+}
+
+function emailNetboxNuevoPedido(client, order) {
+  const productos = order.products.map(p => `• ${p.nombre}${p.detalle ? ' (' + p.detalle + ')' : ''} x${p.qty} — USD ${((parseFloat(p.precio)||0)*(parseInt(p.qty)||1)).toFixed(2)}`).join('\n');
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+    <h2 style="color:#1A3C8F">🛒 Nueva solicitud de pedido</h2>
+    <div style="background:#EFF6FF;padding:16px;border-radius:8px;margin-bottom:16px">
+      <strong>Cliente:</strong> ${client.nombre}<br/>
+      <strong>Cédula:</strong> ${client.cedula}<br/>
+      <strong>Suite:</strong> ${client.suite}<br/>
+      <strong>Mail:</strong> ${client.mail}<br/>
+      <strong>Tel:</strong> ${client.tel || '—'}<br/>
+      <strong>N° Pedido:</strong> ${order.id}<br/>
+      <strong>Total:</strong> USD ${(order.total||0).toFixed(2)}
+    </div>
+    <h3>Productos:</h3>
+    <pre style="background:#F1F5F9;padding:12px;border-radius:8px;white-space:pre-wrap">${productos}</pre>
+    <p><a href="https://netboxshop.netlify.app/#ntx-admin-2026" style="background:#1A3C8F;color:#fff;padding:10px 20px;border-radius:24px;text-decoration:none;font-weight:700">Ver en panel admin →</a></p>
+  </body></html>`;
+}
+
+function emailPedidoAprobado(client, order) {
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#0F172A">
+    <div style="background:#1A3C8F;padding:24px;border-radius:12px 12px 0 0;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:22px">netbox<span style="color:#93C5FD">shop</span></h1>
+    </div>
+    <div style="background:#fff;padding:28px;border:1px solid #E2E8F0;border-top:none">
+      <h2 style="color:#16A34A;margin-top:0">🎉 ¡Tu pedido fue aprobado!</h2>
+      <p>Hola <strong>${client.nombre}</strong>,</p>
+      <p>Tu pedido cumple con todos los requisitos de la DNA y fue <strong>aprobado</strong>. Netbox procederá a realizar la compra en las próximas horas.</p>
+      <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:16px;margin:20px 0">
+        <strong>N° de pedido:</strong> ${order.id}<br/>
+        <strong>Suite:</strong> ${client.suite}<br/>
+        <strong>Total aprobado:</strong> USD ${(order.total||0).toFixed(2)}
+      </div>
+      ${order.qb_link ? `<p style="text-align:center"><a href="${order.qb_link}" style="background:#2563EB;color:#fff;padding:12px 28px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block">Realizar pago →</a></p>` : ''}
+      <p>Una vez que el producto llegue al warehouse en Miami te notificaremos.</p>
+    </div>
+    <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
+      netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
+    </div>
+  </body></html>`;
+}
+
+function emailPedidoEnWarehouse(client, order) {
+  return `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#0F172A">
+    <div style="background:#1A3C8F;padding:24px;border-radius:12px 12px 0 0;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:22px">netbox<span style="color:#93C5FD">shop</span></h1>
+    </div>
+    <div style="background:#fff;padding:28px;border:1px solid #E2E8F0;border-top:none">
+      <h2 style="color:#1A3C8F;margin-top:0">📦 ¡Tu pedido llegó al warehouse!</h2>
+      <p>Hola <strong>${client.nombre}</strong>,</p>
+      <p>Excelentes noticias — tu compra llegó al warehouse de Netbox en Miami y está siendo preparada para el envío a Uruguay.</p>
+      <div style="background:#EFF6FF;border-radius:8px;padding:16px;margin:20px 0">
+        <strong>N° de pedido:</strong> ${order.id}<br/>
+        <strong>Tu Suite:</strong> ${client.suite}<br/>
+        <strong>Dirección warehouse:</strong> 1942 NE 148 Street, Suite ${client.suite}, North Miami, FL 33181
+      </div>
+      <p>Te avisaremos cuando el envío a Uruguay esté en camino.</p>
+    </div>
+    <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
+      netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
+    </div>
+  </body></html>`;
+}
 
 // QB AUTH
 app.get('/qb/connect', (req, res) => {
@@ -62,14 +171,13 @@ async function qb(method, endpoint, data) {
 
 // CLIENT REGISTRATION
 app.post('/api/clients/register', async (req, res) => {
-  const { nombre, cedula, suite, dob, mail, tel, password } = req.body;
-  if (!nombre || !cedula || !suite || !mail || !password) return res.status(400).json({ error: 'Todos los campos son requeridos' });
+  const { nombre, cedula, suite, dob, mail, tel, direccion_uy, password } = req.body;
+  if (!nombre || !cedula || !mail || !password) return res.status(400).json({ error: 'Todos los campos son requeridos' });
   try {
-    const { data: es } = await supabase.from('clients').select('id').eq('suite', suite.toUpperCase()).maybeSingle();
-    if (es) return res.status(409).json({ error: 'suite_taken', message: 'Ese numero de Suite ya esta registrado.' });
+    const suiteVal = (suite || '4444').toUpperCase();
     const { data: em } = await supabase.from('clients').select('id').eq('mail', mail.toLowerCase()).maybeSingle();
     if (em) return res.status(409).json({ error: 'mail_taken', message: 'Ese mail ya esta registrado. Inicia sesion.' });
-    const { data, error } = await supabase.from('clients').insert({ nombre, cedula, suite: suite.toUpperCase(), dob: dob || null, mail: mail.toLowerCase(), tel, password, created_at: new Date().toISOString() }).select().single();
+    const { data, error } = await supabase.from('clients').insert({ nombre, cedula, suite: suiteVal, dob: dob || null, mail: mail.toLowerCase(), tel, direccion_uy, password, created_at: new Date().toISOString() }).select().single();
     if (error) throw error;
     const { password: _p, ...clientData } = data;
     res.json({ success: true, client: clientData });
@@ -103,7 +211,7 @@ app.get('/api/product-name', async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: 'URL requerida' });
   try {
-    const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }, timeout: 8000, maxRedirects: 5 });
+    const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, timeout: 8000, maxRedirects: 5 });
     const html = response.data;
     const og = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
     const ti = html.match(/<title[^>]*>([^<]+)<\/title>/i);
@@ -119,7 +227,7 @@ async function createQBInvoice(order) {
   const search = await qb('GET', `/query?query=${encodeURIComponent("SELECT * FROM Customer WHERE PrimaryEmailAddr = '" + c.mail + "'")}&minorversion=65`);
   let customer = search && search.QueryResponse && search.QueryResponse.Customer && search.QueryResponse.Customer[0];
   if (!customer) {
-    const cr = await qb('POST', '/customer?minorversion=65', { DisplayName: c.nombre + ' (' + c.cedula + ')', PrimaryEmailAddr: { Address: c.mail }, PrimaryPhone: { FreeFormNumber: c.tel }, BillAddr: { Line1: '1942 NE 148 Street, Suite ' + c.suite, City: 'North Miami', CountrySubDivisionCode: 'FL', PostalCode: '33181', Country: 'USA' } });
+    const cr = await qb('POST', '/customer?minorversion=65', { DisplayName: c.nombre + ' (' + c.cedula + ')', PrimaryEmailAddr: { Address: c.mail }, BillAddr: { Line1: '1942 NE 148 Street, Suite ' + c.suite, City: 'North Miami', CountrySubDivisionCode: 'FL', PostalCode: '33181', Country: 'USA' } });
     customer = cr.Customer;
   }
   const lines = order.products.map(function(p, i) {
@@ -127,15 +235,20 @@ async function createQBInvoice(order) {
   });
   lines.push({ Id: String(order.products.length+1), LineNum: order.products.length+1, Description: 'Sales Tax Florida (7%)', Amount: order.salesTax || 0, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.salesTax || 0 } });
   lines.push({ Id: String(order.products.length+2), LineNum: order.products.length+2, Description: 'Recargo de servicio Netbox Corp (5%)', Amount: order.recargo, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.recargo } });
-  const inv = await qb('POST', '/invoice?minorversion=65&include=invoiceLink', { CustomerRef: { value: customer.Id }, BillEmail: { Address: c.mail }, EmailStatus: 'NeedToSend', Line: lines, CustomerMemo: { value: 'Pedido ' + order.id + ' Suite ' + c.suite }, PrivateNote: 'Cedula: ' + c.cedula });
+  const inv = await qb('POST', '/invoice?minorversion=65&include=invoiceLink', { CustomerRef: { value: customer.Id }, BillEmail: { Address: c.mail }, EmailStatus: 'NeedToSend', Line: lines, CustomerMemo: { value: 'Pedido ' + order.id + ' Suite ' + c.suite } });
   return inv.Invoice;
 }
 
-// ORDERS
+// CREATE ORDER
 app.post('/api/orders', async (req, res) => {
   const order = req.body;
   try {
     await supabase.from('orders').insert({ id: order.id, status: 'processing', client: order.client, products: order.products, subtotal: order.subtotal, recargo: order.recargo, total: order.total, created_at: new Date().toISOString(), qb_link: null, last_four: null, invoice_id: null, admin_notes: null });
+
+    // Send emails
+    await sendEmail({ to: order.client.mail, subject: '✅ Recibimos tu solicitud — Netbox Shop', html: emailPedidoEnProceso(order.client, order) });
+    await sendEmail({ to: NETBOX_EMAIL, subject: '🛒 Nueva solicitud de pedido — ' + order.client.nombre, html: emailNetboxNuevoPedido(order.client, order) });
+
     let paymentLink = null, invoiceId = null;
     if (tokenStore.accessToken && tokenStore.realmId) {
       try {
@@ -148,6 +261,7 @@ app.post('/api/orders', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET ORDERS BY CLIENT
 app.get('/api/orders/client', async (req, res) => {
   const { mail } = req.query;
   if (!mail) return res.status(400).json({ error: 'mail requerido' });
@@ -157,6 +271,7 @@ app.get('/api/orders/client', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET ALL ORDERS (admin)
 app.get('/api/orders', async (req, res) => {
   if (req.headers['x-admin-key'] !== ADMIN_KEY) return res.status(401).json({ error: 'No autorizado' });
   try {
@@ -165,6 +280,7 @@ app.get('/api/orders', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// UPDATE ORDER (admin) — with email notifications
 app.patch('/api/orders/:id', async (req, res) => {
   if (req.headers['x-admin-key'] !== ADMIN_KEY) return res.status(401).json({ error: 'No autorizado' });
   const patch = {};
@@ -174,10 +290,20 @@ app.patch('/api/orders/:id', async (req, res) => {
   if (req.body.adminNotes) patch.admin_notes = req.body.adminNotes;
   try {
     await supabase.from('orders').update(patch).eq('id', req.params.id);
+
+    // Send notification emails on status change
+    if (req.body.status && req.body.order) {
+      const order = req.body.order;
+      const client = order.client;
+      if (req.body.status === 'approved') {
+        await sendEmail({ to: client.mail, subject: '🎉 Tu pedido fue aprobado — Netbox Shop', html: emailPedidoAprobado(client, order) });
+      }
+    }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// QB WEBHOOK
 app.post('/qb/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     const payload = JSON.parse(req.body.toString());
