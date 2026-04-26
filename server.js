@@ -59,7 +59,7 @@ function emailPedidoEnProceso(client, order) {
       </table>
       <div style="margin-top:16px;text-align:right">
   
-        <div style="color:#64748B;font-size:14px">Recargo Netbox (5%): USD ${(order.recargo||0).toFixed(2)}</div>
+        <div style="color:#64748B;font-size:14px">Recargo Netbox (8%): USD ${(order.recargo||0).toFixed(2)}</div>
         <div style="font-size:18px;font-weight:800;color:#1A3C8F;margin-top:8px">Total: USD ${(order.total||0).toFixed(2)}</div>
       </div>
       <p style="color:#64748B;font-size:12px;margin-top:24px">⚠️ El precio no incluye costos adicionales de envío interno por parte del proveedor.</p>
@@ -234,7 +234,7 @@ async function createQBInvoice(order) {
     return { Id: String(i+1), LineNum: i+1, Description: p.nombre + (p.detalle ? ' - ' + p.detalle : '') + (p.url ? '\n' + p.url : ''), Amount: (parseFloat(p.precio)||0)*(parseInt(p.qty)||1), DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: parseInt(p.qty)||1, UnitPrice: parseFloat(p.precio)||0 } };
   });
   lines.push({ Id: String(order.products.length+1), LineNum: order.products.length+1, Description: 'Sales Tax Florida (7%)', Amount: order.salesTax || 0, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.salesTax || 0 } });
-  lines.push({ Id: String(order.products.length+2), LineNum: order.products.length+2, Description: 'Recargo de servicio Netbox Corp (5%)', Amount: order.recargo, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.recargo } });
+  lines.push({ Id: String(order.products.length+2), LineNum: order.products.length+2, Description: 'Recargo de servicio Netbox Corp (8%)', Amount: order.recargo, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.recargo } });
   const inv = await qb('POST', '/invoice?minorversion=65&include=invoiceLink', { CustomerRef: { value: customer.Id }, BillEmail: { Address: c.mail }, EmailStatus: 'NeedToSend', Line: lines, CustomerMemo: { value: 'Pedido ' + order.id + ' Suite ' + c.suite } });
   return inv.Invoice;
 }
