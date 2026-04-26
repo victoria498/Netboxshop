@@ -299,7 +299,8 @@ app.patch('/api/orders/:id', async (req, res) => {
       if (req.body.status === 'approved') {
         await sendEmail({ to: client.mail, subject: '🎉 Tu pedido fue aprobado — Netbox Shop', html: emailPedidoAprobado(client, order) });
       } else if (req.body.status === 'rejected' && req.body.razon) {
-        await sendEmail({ to: client.mail, subject: '❌ Tu pedido no pudo procesarse — Netbox Shop', html: emailPedidoRechazado(client, order, req.body.razon, req.body.adminNotes) });
+        const orderWithPrice = Object.assign({}, order, { precio_real: req.body.precioReal });
+        await sendEmail({ to: client.mail, subject: '❌ Tu pedido no pudo procesarse — Netbox Shop', html: emailPedidoRechazado(client, orderWithPrice, req.body.razon, req.body.adminNotes) });
       }
     }
     // Send rejection email if status changed to rejected
@@ -402,65 +403,16 @@ app.post('/api/clients/reset-password', async (req, res) => {
 
 
 // EMAIL - PEDIDO RECHAZADO
-function emailPedidoRechazado(client, order, razon, nota) {
-  const razones = {
-    'no_existe': 'El producto no existe',
-    'precio_no_coincide': 'El precio final no coincide',
-    'out_of_stock': 'Producto sin stock (Out of Stock)'
-  };
-  const razonTexto = razones[razon] || razon;
-  const reactivateUrl = `https://netboxshop-production.up.railway.app/api/orders/reactivate/${order.id}?token=${order.id}_reactivate`;
-  const showButton = razon === 'precio_no_coincide';
-
-  return `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#0F172A">
-    <div style="background:#1A3C8F;padding:24px;border-radius:12px 12px 0 0;text-align:center">
-      <h1 style="color:#fff;margin:0;font-size:22px">netbox<span style="color:#93C5FD">shop</span></h1>
-    </div>
-    <div style="background:#fff;padding:28px;border:1px solid #E2E8F0;border-top:none">
-      <h2 style="color:#DC2626;margin-top:0">❌ Tu pedido no pudo procesarse</h2>
-      <p>Hola <strong>${client.nombre}</strong>,</p>
-      <p>Lamentablemente no pudimos procesar tu pedido <strong>${order.id}</strong> por el siguiente motivo:</p>
-      <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:16px;margin:20px 0">
-        <div style="font-weight:700;color:#DC2626;margin-bottom:8px">Motivo: ${razonTexto}</div>
-        ${nota ? `<div style="color:#64748B;font-size:14px;line-height:1.6">${nota}</div>` : ''}
-      </div>
-      ${showButton ? `
-      <p>Si estás de acuerdo con el nuevo monto, podés reactivar tu pedido haciendo clic en el botón:</p>
-      <p style="text-align:center;margin:28px 0">
-        <a href="${reactivateUrl}" style="background:#2563EB;color:#fff;padding:12px 28px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block">Confirmar precio y reactivar pedido →</a>
-      </p>` : ''}
-      <p style="color:#64748B;font-size:13px">Si tenés alguna consulta podés responder este mail o contactarnos directamente.</p>
-    </div>
-    <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
-      netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
-    </div>
-  </body></html>`;
-}
-
-// REACTIVATE ORDER endpoint
-app.get('/api/orders/reactivate/:id', async (req, res) => {
-  const { id } = req.params;
-  const { token } = req.query;
-  if (token !== `${id}_reactivate`) {
-    return res.send('<html><body style="font-family:system-ui;max-width:500px;margin:60px auto;text-align:center"><h2 style="color:#DC2626">❌ Link inválido</h2><p>Este link no es válido o ya fue utilizado.</p></body></html>');
-  }
-  try {
-    await supabase.from('orders').update({ status: 'processing', admin_notes: null }).eq('id', id).eq('status', 'rejected');
-    res.send('<html><body style="font-family:system-ui;max-width:500px;margin:60px auto;text-align:center"><h2 style="color:#16A34A">✅ Pedido reactivado</h2><p>Tu pedido fue reactivado y vuelve a estar en procesamiento. El equipo de Netbox lo revisará a la brevedad.</p><a href="https://netboxshop.netlify.app" style="background:#2563EB;color:#fff;padding:12px 24px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block;margin-top:16px">Ir a mi cuenta →</a></body></html>');
-  } catch (e) {
-    res.status(500).send('Error: ' + e.message);
-  }
-});
-
 
 function emailPedidoRechazado(client, order, razon, notas) {
   const mostrarBoton = razon === 'precio';
-  const reactivarUrl = `https://netboxshop.netlify.app/?reactivar=${order.id}&mail=${encodeURIComponent(client.mail)}`;
+  const precioReal = order.precio_real ? parseFloat(order.precio_real) : null;
+  const reactivarUrl = `https://netboxshop-production.up.railway.app/api/orders/reactivar?id=${order.id}&mail=${encodeURIComponent(client.mail)}`;
   const razonTextos = {
     'no_existe': 'El producto no existe o no está disponible en la tienda seleccionada.',
-    'no_eeuu': 'El producto no corresponde a una tienda de EEUU.',
-    'precio': order.precio_real ? `El precio real del producto es <strong>USD ${parseFloat(order.precio_real).toFixed(2)}</strong>. Si confirmás este nuevo monto, reactivaremos tu pedido.` : 'El precio final del producto no coincide con el monto indicado en tu solicitud.',
-    'stock': 'El producto está agotado (Out of Stock) en este momento.'
+    'precio': 'El precio final del producto no coincide con el monto indicado en tu solicitud.',
+    'stock': 'El producto está agotado (Out of Stock) en este momento.',
+    'no_eeuu': 'El producto no corresponde a una tienda de EEUU.'
   };
   const razonTexto = razonTextos[razon] || razon;
 
@@ -479,12 +431,17 @@ function emailPedidoRechazado(client, order, razon, notas) {
         <div style="font-size:12px;font-weight:700;color:#64748B;margin-bottom:6px">MENSAJE DEL EQUIPO NETBOX</div>
         <div style="color:#0F172A;line-height:1.7">${notas}</div>
       </div>` : ''}
-      ${mostrarBoton ? `
-      <p style="color:#64748B;font-size:14px">Si querés aceptar el nuevo monto y reactivar tu pedido, hacé clic en el botón:</p>
-      <p style="text-align:center;margin:24px 0">
+      ${mostrarBoton && precioReal ? `
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:20px;margin:20px 0;text-align:center">
+        <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">MONTO REAL DEL PEDIDO</div>
+        <div style="font-size:32px;font-weight:800;color:#1A3C8F;margin-bottom:4px">USD ${precioReal.toFixed(2)}</div>
+        <div style="font-size:11px;color:#64748B;line-height:1.6">✓ Incluye taxes de USA y costos de envío interno<br/>✗ No incluye comisión de Netbox del 8%</div>
+      </div>
+      <p style="color:#64748B;font-size:14px;text-align:center">Si aceptás este nuevo monto, hacé clic para reactivar tu pedido:</p>
+      <p style="text-align:center;margin:20px 0">
         <a href="${reactivarUrl}" style="background:#2563EB;color:#fff;padding:12px 28px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block">Confirmar precio y reactivar pedido →</a>
       </p>
-      <p style="color:#94A3B8;font-size:12px;text-align:center">Al hacer clic confirmás el nuevo precio indicado por el equipo Netbox.</p>
+      <p style="color:#94A3B8;font-size:11px;text-align:center">Al hacer clic confirmás el nuevo monto indicado. El total final incluirá la comisión de Netbox del 8%.</p>
       ` : ''}
     </div>
     <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
@@ -492,52 +449,3 @@ function emailPedidoRechazado(client, order, razon, notas) {
     </div>
   </body></html>`;
 }
-
-// REACTIVAR PEDIDO (from email link)
-app.get('/api/orders/reactivar', async (req, res) => {
-  const { id, mail } = req.query;
-  if (!id || !mail) return res.status(400).json({ error: 'Datos incompletos' });
-  try {
-    const { data } = await supabase.from('orders').select('*').eq('id', id).single();
-    if (!data) return res.status(404).json({ error: 'Pedido no encontrado' });
-    if (data.client.mail.toLowerCase() !== mail.toLowerCase()) return res.status(403).json({ error: 'No autorizado' });
-    // Recalculate totals with new price if available
-    const updateData = { status: 'processing', admin_notes: (data.admin_notes || '') + ' [Cliente confirmó nuevo precio]' };
-    if (data.precio_real) {
-      const precioReal = parseFloat(data.precio_real);
-      const recargo = Math.round(precioReal * 0.08 * 100) / 100;
-      const total = Math.round((precioReal + recargo) * 100) / 100;
-      // Update first product price
-      const products = data.products || [];
-      if (products.length > 0) { products[0].precio = precioReal; }
-      updateData.subtotal = precioReal;
-      updateData.recargo = recargo;
-      updateData.total = total;
-      updateData.products = products;
-    }
-    updateData.reactivado = true;
-    await supabase.from('orders').update(updateData).eq('id', id);
-    res.send(`<html><body style="font-family:system-ui;max-width:500px;margin:60px auto;text-align:center;padding:20px">
-      <div style="background:#1A3C8F;padding:24px;border-radius:12px;color:#fff;margin-bottom:20px">
-        <h2 style="margin:0">netbox<span style="color:#93C5FD">shop</span></h2>
-      </div>
-      <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:12px;padding:24px">
-        <div style="font-size:40px;margin-bottom:12px">✅</div>
-        <h2 style="color:#16A34A;margin-top:0">¡Pedido reactivado!</h2>
-        <p style="color:#64748B">Tu pedido fue reactivado exitosamente. El equipo de Netbox lo procesará a la brevedad.</p>
-        <a href="https://netboxshop.netlify.app" style="background:#2563EB;color:#fff;padding:12px 24px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block;margin-top:8px">Ir a mi cuenta →</a>
-      </div>
-    </body></html>`);
-  } catch (e) { res.status(500).send('Error: ' + e.message); }
-});
-
-app.get('/api/status', (req, res) => res.json({ qbConnected: !!(tokenStore.accessToken && tokenStore.realmId), environment: QB_ENV }));
-
-async function start() {
-  try {
-    const { data } = await supabase.from('settings').select('value').eq('key', 'qb_tokens').single();
-    if (data && data.value) tokenStore = Object.assign({}, tokenStore, JSON.parse(data.value));
-  } catch (e) {}
-  app.listen(process.env.PORT || 3000, () => console.log('Server running on port', process.env.PORT || 3000));
-}
-start();
