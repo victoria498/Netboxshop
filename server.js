@@ -201,7 +201,7 @@ app.post('/api/clients/login', async (req, res) => {
 app.get('/api/clients', async (req, res) => {
   if (req.headers['x-admin-key'] !== ADMIN_KEY) return res.status(401).json({ error: 'No autorizado' });
   try {
-    const { data } = await supabase.from('clients').select('id,nombre,cedula,suite,mail,tel,created_at').order('created_at', { ascending: false });
+    const { data } = await supabase.from('clients').select('id,nombre,cedula,suite,mail,tel,dob,direccion_uy,created_at').order('created_at', { ascending: false });
     res.json({ clients: data || [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -355,7 +355,7 @@ app.patch('/api/clients/:id', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'No autorizado' });
   const { id } = req.params;
-  const { nombre, cedula, suite, mail, tel, direccion_uy } = req.body;
+  const { nombre, cedula, suite, mail, tel, dob, direccion_uy } = req.body;
   try {
     const patch = {};
     if (nombre)       patch.nombre       = nombre;
@@ -363,9 +363,61 @@ app.patch('/api/clients/:id', async (req, res) => {
     if (suite)        patch.suite        = suite;
     if (mail)         patch.mail         = mail;
     if (tel !== undefined) patch.tel     = tel;
+    if (dob !== undefined)         patch.dob          = dob;
     if (direccion_uy !== undefined) patch.direccion_uy = direccion_uy;
     const { error } = await supabase.from('clients').update(patch).eq('id', id);
     if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// CLIENT SELF UPDATE
+app.patch('/api/clients/:id', async (req, res) => {
+  // Allow both admin and client self-update
+  const adminKey = req.headers['x-admin-key'];
+  const clientMail = req.headers['x-client-mail'];
+  
+  if (adminKey !== process.env.ADMIN_KEY && !clientMail) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+
+  const { id } = req.params;
+
+  // If client self-update, verify the client owns this account
+  if (!adminKey || adminKey !== process.env.ADMIN_KEY) {
+    const { data: existingClient } = await supabase.from('clients').select('id,mail').eq('id', id).single();
+    if (!existingClient || existingClient.mail !== clientMail) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+  }
+
+  const { nombre, cedula, suite, mail, tel, dob, direccion_uy } = req.body;
+  try {
+    const patch = {};
+    if (nombre)       patch.nombre       = nombre;
+    if (cedula)       patch.cedula       = cedula;
+    if (suite)        patch.suite        = suite;
+    if (mail)         patch.mail         = mail;
+    if (tel !== undefined) patch.tel     = tel;
+    if (dob !== undefined) patch.dob     = dob;
+    if (direccion_uy !== undefined) patch.direccion_uy = direccion_uy;
+    const { error } = await supabase.from('clients').update(patch).eq('id', id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// CLIENT CHANGE PASSWORD
+app.post('/api/clients/change-password', async (req, res) => {
+  const { mail, passwordActual, passwordNueva } = req.body;
+  if (!mail || !passwordActual || !passwordNueva) return res.status(400).json({ error: 'Datos incompletos' });
+  try {
+    const { data } = await supabase.from('clients').select('id,password').eq('mail', mail.toLowerCase()).single();
+    if (!data) return res.status(404).json({ error: 'Cliente no encontrado' });
+    if (data.password !== passwordActual) return res.status(401).json({ error: 'La contraseña actual no es correcta.' });
+    if (passwordNueva.length < 8) return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres.' });
+    await supabase.from('clients').update({ password: passwordNueva }).eq('id', data.id);
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
