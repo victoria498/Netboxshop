@@ -357,28 +357,30 @@ app.post('/qb/webhook', express.raw({ type: 'application/json' }), async (req, r
 app.patch('/api/clients/:id', async (req, res) => {
   const adminKey = req.headers['x-admin-key'];
   const isAdmin = adminKey === process.env.ADMIN_KEY;
+  const { selfMail, nombre, cedula, suite, mail, tel, dob, direccion_uy } = req.body;
 
-  // Client self-update: verify via mail in body
-  if (!isAdmin) {
-    const { selfMail } = req.body;
-    if (!selfMail) return res.status(401).json({ error: 'No autorizado' });
-    const { data: existing } = await supabase.from('clients').select('id,mail').eq('id', req.params.id).single();
-    if (!existing || existing.mail.toLowerCase() !== selfMail.toLowerCase()) {
-      return res.status(403).json({ error: 'No autorizado' });
-    }
-  }
+  if (!isAdmin && !selfMail) return res.status(401).json({ error: 'No autorizado' });
 
-  const { nombre, cedula, suite, mail, tel, dob, direccion_uy } = req.body;
   try {
     const patch = {};
-    if (nombre)                     patch.nombre       = nombre;
-    if (cedula)                     patch.cedula       = cedula;
-    if (suite)                      patch.suite        = suite;
-    if (mail)                       patch.mail         = mail;
+    if (nombre !== undefined)       patch.nombre       = nombre;
+    if (cedula !== undefined)       patch.cedula       = cedula;
+    if (suite !== undefined)        patch.suite        = suite;
+    if (mail !== undefined)         patch.mail         = mail;
     if (tel !== undefined)          patch.tel          = tel;
     if (dob !== undefined)          patch.dob          = dob;
     if (direccion_uy !== undefined) patch.direccion_uy = direccion_uy;
-    const { error } = await supabase.from('clients').update(patch).eq('id', req.params.id);
+
+    let query;
+    if (isAdmin) {
+      // Admin updates by id
+      query = supabase.from('clients').update(patch).eq('id', req.params.id);
+    } else {
+      // Client updates by their own mail (no id needed)
+      query = supabase.from('clients').update(patch).eq('mail', selfMail.toLowerCase());
+    }
+
+    const { error } = await query;
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
