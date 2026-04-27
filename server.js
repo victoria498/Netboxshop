@@ -372,22 +372,17 @@ app.patch('/api/clients/:id', async (req, res) => {
 });
 
 
-// CLIENT SELF UPDATE
+// CLIENT SELF UPDATE / ADMIN UPDATE
 app.patch('/api/clients/:id', async (req, res) => {
-  // Allow both admin and client self-update
   const adminKey = req.headers['x-admin-key'];
-  const clientMail = req.headers['x-client-mail'];
-  
-  if (adminKey !== process.env.ADMIN_KEY && !clientMail) {
-    return res.status(401).json({ error: 'No autorizado' });
-  }
+  const isAdmin = adminKey === process.env.ADMIN_KEY;
 
-  const { id } = req.params;
-
-  // If client self-update, verify the client owns this account
-  if (!adminKey || adminKey !== process.env.ADMIN_KEY) {
-    const { data: existingClient } = await supabase.from('clients').select('id,mail').eq('id', id).single();
-    if (!existingClient || existingClient.mail !== clientMail) {
+  // Client self-update: verify via mail in body
+  if (!isAdmin) {
+    const { selfMail } = req.body;
+    if (!selfMail) return res.status(401).json({ error: 'No autorizado' });
+    const { data: existing } = await supabase.from('clients').select('id,mail').eq('id', req.params.id).single();
+    if (!existing || existing.mail.toLowerCase() !== selfMail.toLowerCase()) {
       return res.status(403).json({ error: 'No autorizado' });
     }
   }
@@ -395,14 +390,14 @@ app.patch('/api/clients/:id', async (req, res) => {
   const { nombre, cedula, suite, mail, tel, dob, direccion_uy } = req.body;
   try {
     const patch = {};
-    if (nombre)       patch.nombre       = nombre;
-    if (cedula)       patch.cedula       = cedula;
-    if (suite)        patch.suite        = suite;
-    if (mail)         patch.mail         = mail;
-    if (tel !== undefined) patch.tel     = tel;
-    if (dob !== undefined) patch.dob     = dob;
+    if (nombre)                     patch.nombre       = nombre;
+    if (cedula)                     patch.cedula       = cedula;
+    if (suite)                      patch.suite        = suite;
+    if (mail)                       patch.mail         = mail;
+    if (tel !== undefined)          patch.tel          = tel;
+    if (dob !== undefined)          patch.dob          = dob;
     if (direccion_uy !== undefined) patch.direccion_uy = direccion_uy;
-    const { error } = await supabase.from('clients').update(patch).eq('id', id);
+    const { error } = await supabase.from('clients').update(patch).eq('id', req.params.id);
     if (error) return res.status(400).json({ error: error.message });
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
