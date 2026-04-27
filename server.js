@@ -573,7 +573,7 @@ function emailLinkPago(client, order) {
       <p style="text-align:center;margin:28px 0">
         <a href="${order.qb_link}" style="background:#2563EB;color:#fff;padding:14px 32px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block;font-size:16px">Realizar pago →</a>
       </p>
-      <p style="color:#64748B;font-size:13px">Una vez confirmado el pago, Netbox realizará la compra en las próximas 48 horas.</p>
+      <p style="color:#64748B;font-size:13px">Una vez confirmado el pago, Netbox realizará la compra en las próximas 24 horas.</p>
     </div>
     <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
       netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
