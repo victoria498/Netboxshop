@@ -210,16 +210,54 @@ app.get('/api/clients', async (req, res) => {
 app.get('/api/product-name', async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: 'URL requerida' });
+
+  // Helper: extract name from URL path
+  function nameFromUrl(u) {
+    try {
+      const path = new URL(u).pathname;
+      const slug = path.split('/').filter(Boolean).pop() || '';
+      return slug
+        .replace(/[-_]/g, ' ')
+        .replace(/\.html?$/i, '')
+        .replace(/\?.*$/, '')
+        .replace(/\b\w/g, c => c.toUpperCase())
+        .trim();
+    } catch(e) { return ''; }
+  }
+
+  // Helper: clean raw title
+  function cleanTitle(raw) {
+    return raw
+      .replace(/\s*[|\-\u2013\u2014\u00b7]\s*.{0,50}$/, '')
+      .replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ').trim();
+  }
+
   try {
-    const response = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, timeout: 8000, maxRedirects: 5 });
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+      },
+      timeout: 10000,
+      maxRedirects: 5
+    });
     const html = response.data;
-    const og = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+    const og = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']{3,}?)["']/i)
+            || html.match(/<meta[^>]*content=["']([^"']{3,}?)["'][^>]*property=["']og:title["']/i);
     const ti = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const raw = (og && og[1]) || (ti && ti[1]) || '';
-    const name = raw.replace(/\s*[\|\-\u2013\u2014\u00b7]\s*.{0,40}$/, '').replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&quot;/g,'"').trim();
-    res.json({ name: name || null });
-  } catch (e) { res.json({ name: null }); }
-});
+    const name = cleanTitle(raw) || nameFromUrl(url);
+    res.json({ name: name || '' });
+  } catch(e) {
+    // Fallback: extract from URL
+    const name = nameFromUrl(url);
+    res.json({ name });
+  }
+});;
 
 // QB INVOICE
 async function createQBInvoice(order) {
