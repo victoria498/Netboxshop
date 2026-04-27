@@ -349,6 +349,27 @@ app.post('/qb/webhook', express.raw({ type: 'application/json' }), async (req, r
 });
 
 
+
+// UPDATE CLIENT (admin)
+app.patch('/api/clients/:id', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  if (adminKey !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'No autorizado' });
+  const { id } = req.params;
+  const { nombre, cedula, suite, mail, tel, direccion_uy } = req.body;
+  try {
+    const patch = {};
+    if (nombre)       patch.nombre       = nombre;
+    if (cedula)       patch.cedula       = cedula;
+    if (suite)        patch.suite        = suite;
+    if (mail)         patch.mail         = mail;
+    if (tel !== undefined) patch.tel     = tel;
+    if (direccion_uy !== undefined) patch.direccion_uy = direccion_uy;
+    const { error } = await supabase.from('clients').update(patch).eq('id', id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // FORGOT PASSWORD
 app.post('/api/clients/forgot-password', async (req, res) => {
   const { mail } = req.body;
