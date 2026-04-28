@@ -214,13 +214,26 @@ app.get('/api/product-name', async (req, res) => {
   // Helper: extract name from URL path
   function nameFromUrl(u) {
     try {
-      const path = new URL(u).pathname;
-      const slug = path.split('/').filter(Boolean).pop() || '';
-      return slug
+      const parsed = new URL(u);
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      // Find the most descriptive slug (longest, with hyphens, not numeric-only)
+      let best = '';
+      for (const part of parts) {
+        const clean = part.replace(/\.(html?|p|aspx|php)$/i, '').replace(/[?#].*$/, '');
+        const isNumeric = /^\d+$/.test(clean);
+        const hasWords = clean.includes('-') || clean.includes('_');
+        if (!isNumeric && hasWords && clean.length > best.length) {
+          best = clean;
+        }
+      }
+      if (!best) best = parts[parts.length - 1] || '';
+      return best
         .replace(/[-_]/g, ' ')
-        .replace(/\.html?$/i, '')
-        .replace(/\?.*$/, '')
-        .replace(/\b\w/g, c => c.toUpperCase())
+        .replace(/\.(html?|p|aspx|php)$/i, '')
+        .split(' ')
+        .filter(Boolean)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ')
         .trim();
     } catch(e) { return ''; }
   }
