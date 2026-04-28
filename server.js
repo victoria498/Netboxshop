@@ -59,7 +59,7 @@ function emailPedidoEnProceso(client, order) {
       </table>
       <div style="margin-top:16px;text-align:right">
   
-        <div style="color:#64748B;font-size:14px">Recargo Netbox (8%): USD ${(order.recargo||0).toFixed(2)}</div>
+        <div style="color:#64748B;font-size:14px">Recargo Netbox (6%): USD ${(order.recargo||0).toFixed(2)}</div>
         <div style="font-size:18px;font-weight:800;color:#1A3C8F;margin-top:8px">Total: USD ${(order.total||0).toFixed(2)}</div>
       </div>
       <p style="color:#64748B;font-size:12px;margin-top:24px">⚠️ El precio no incluye costos adicionales de envío interno por parte del proveedor.</p>
@@ -272,7 +272,7 @@ async function createQBInvoice(order) {
     return { Id: String(i+1), LineNum: i+1, Description: p.nombre + (p.detalle ? ' - ' + p.detalle : '') + (p.url ? '\n' + p.url : ''), Amount: (parseFloat(p.precio)||0)*(parseInt(p.qty)||1), DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: parseInt(p.qty)||1, UnitPrice: parseFloat(p.precio)||0 } };
   });
   lines.push({ Id: String(order.products.length+1), LineNum: order.products.length+1, Description: 'Sales Tax Florida (7%)', Amount: order.salesTax || 0, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.salesTax || 0 } });
-  lines.push({ Id: String(order.products.length+2), LineNum: order.products.length+2, Description: 'Recargo de servicio Netbox Corp (8%)', Amount: order.recargo, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.recargo } });
+  lines.push({ Id: String(order.products.length+2), LineNum: order.products.length+2, Description: 'Recargo de servicio Netbox Corp (6%)', Amount: order.recargo, DetailType: 'SalesItemLineDetail', SalesItemLineDetail: { Qty: 1, UnitPrice: order.recargo } });
   const inv = await qb('POST', '/invoice?minorversion=65&include=invoiceLink', { CustomerRef: { value: customer.Id }, BillEmail: { Address: c.mail }, EmailStatus: 'NeedToSend', Line: lines, CustomerMemo: { value: 'Pedido ' + order.id + ' Suite ' + c.suite } });
   return inv.Invoice;
 }
@@ -538,13 +538,13 @@ function emailPedidoRechazado(client, order, razon, notas) {
       <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:20px;margin:20px 0;text-align:center">
         <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">MONTO REAL DEL PEDIDO</div>
         <div style="font-size:32px;font-weight:800;color:#1A3C8F;margin-bottom:4px">USD ${precioReal.toFixed(2)}</div>
-        <div style="font-size:11px;color:#64748B;line-height:1.6">✓ Incluye taxes de USA y costos de envío interno<br/>✗ No incluye comisión de Netbox del 8%</div>
+        <div style="font-size:11px;color:#64748B;line-height:1.6">✓ Incluye taxes de USA y costos de envío interno<br/>✗ No incluye comisión de Netbox del 6%</div>
       </div>
       <p style="color:#64748B;font-size:14px;text-align:center">Si aceptás este nuevo monto, hacé clic para reactivar tu pedido:</p>
       <p style="text-align:center;margin:20px 0">
         <a href="${reactivarUrl}" style="background:#2563EB;color:#fff;padding:12px 28px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block">Confirmar precio y reactivar pedido →</a>
       </p>
-      <p style="color:#94A3B8;font-size:11px;text-align:center">Al hacer clic confirmás el nuevo monto indicado. El total final incluirá la comisión de Netbox del 8%.</p>
+      <p style="color:#94A3B8;font-size:11px;text-align:center">Al hacer clic confirmás el nuevo monto indicado. El total final incluirá la comisión de Netbox del 6%.</p>
       ` : ''}
     </div>
     <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
@@ -628,7 +628,7 @@ app.get('/api/orders/reactivar', async (req, res) => {
 
     if (data.precio_real) {
       const precioReal = parseFloat(data.precio_real);
-      const recargo = Math.round(precioReal * 0.08 * 100) / 100;
+      const recargo = Math.round(precioReal * 0.06 * 100) / 100;
       const total = Math.round((precioReal + recargo) * 100) / 100;
       const products = data.products ? [...data.products] : [];
       if (products.length > 0) { products[0].precio = precioReal; }
@@ -653,7 +653,7 @@ app.get('/api/orders/reactivar', async (req, res) => {
         <div style="background:#fff;border-radius:8px;padding:16px;margin:16px 0;text-align:left">
           <div style="font-size:12px;color:#64748B;margin-bottom:8px">RESUMEN DEL PEDIDO</div>
           <div style="display:flex;justify-content:space-between;font-size:13px;color:#64748B;margin-bottom:4px"><span>Precio del producto</span><span>USD ${ns.toFixed(2)}</span></div>
-          <div style="display:flex;justify-content:space-between;font-size:13px;color:#64748B;margin-bottom:8px"><span>Comisión Netbox (8%)</span><span>USD ${nr.toFixed(2)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:#64748B;margin-bottom:8px"><span>Comisión Netbox (6%)</span><span>USD ${nr.toFixed(2)}</span></div>
           <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;color:#1A3C8F"><span>Total a pagar</span><span>USD ${nt.toFixed(2)}</span></div>
         </div>
       </div>
