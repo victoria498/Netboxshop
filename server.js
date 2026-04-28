@@ -97,14 +97,14 @@ function emailPedidoAprobado(client, order) {
     <div style="background:#fff;padding:28px;border:1px solid #E2E8F0;border-top:none">
       <h2 style="color:#16A34A;margin-top:0">🎉 ¡Tu pedido fue aprobado!</h2>
       <p>Hola <strong>${client.nombre}</strong>,</p>
-      <p>Tu pedido cumple con todos los requisitos de la DNA y fue <strong>aprobado</strong>. Netbox procederá a realizar la compra en las próximas horas.</p>
+      <p>Tu pedido cumple con todos los requisitos de la DNA y fue <strong>aprobado</strong>. Netbox procederá a enviarte un link de pago para poder proceder con la compra del producto.</p>
       <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:16px;margin:20px 0">
         <strong>N° de pedido:</strong> ${order.id}<br/>
         <strong>Suite:</strong> ${client.suite}<br/>
         <strong>Total aprobado:</strong> USD ${(order.total||0).toFixed(2)}
       </div>
       ${order.qb_link ? `<p style="text-align:center"><a href="${order.qb_link}" style="background:#2563EB;color:#fff;padding:12px 28px;border-radius:24px;text-decoration:none;font-weight:700;display:inline-block">Realizar pago →</a></p>` : ''}
-      <p>Una vez que el producto llegue al warehouse en Miami te notificaremos.</p>
+      
     </div>
     <div style="background:#F1F5F9;padding:16px;border-radius:0 0 12px 12px;text-align:center;color:#64748B;font-size:12px">
       netboxshop.com · Netbox Corp · Registrada en la Dirección Nacional de Aduanas
