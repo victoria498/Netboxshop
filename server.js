@@ -650,29 +650,17 @@ app.post('/api/cupo', async (req, res) => {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-  function soapRequest(soapBody) {
-    return new Promise((resolve, reject) => {
-      const url = new URL(ADUANA_ENDPOINT);
-      const options = {
-        hostname: url.hostname,
-        path: url.pathname,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': `"${SOAP_ACTION}"`,
-          'Content-Length': Buffer.byteLength(soapBody),
-        },
-      };
-      const req = require('https').request(options, (response) => {
-        let data = '';
-        response.on('data', chunk => data += chunk);
-        response.on('end', () => resolve(data));
-      });
-      req.on('error', reject);
-      req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
-      req.write(soapBody);
-      req.end();
+  async function soapRequest(soapBody) {
+    const response = await axios.post(ADUANA_ENDPOINT, soapBody, {
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+        'SOAPAction': SOAP_ACTION,
+        'User-Agent': 'Mozilla/5.0',
+      },
+      timeout: 15000,
+      responseType: 'text',
     });
+    return response.data;
   }
 
   function extractTag(xml, tag) {
