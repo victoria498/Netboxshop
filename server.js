@@ -629,7 +629,7 @@ function emailPagoConfirmado(client, order) {
 }
 
 
-// CUPO EPI - DNA Aduana Uruguay
+// CUPO EPI - DNA Aduana Uruguay (uses native https for reliability)
 app.post('/api/cupo', async (req, res) => {
   const { documento, anio, monto } = req.body;
   if (!documento || !anio || monto === undefined) {
@@ -649,23 +649,46 @@ app.post('/api/cupo', async (req, res) => {
     </wsc:WSCupoEPI.Execute>
   </soapenv:Body>
 </soapenv:Envelope>`;
-  try {
-    const response = await fetch(ADUANA_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': SOAP_ACTION },
-      body: soap,
-      signal: AbortSignal.timeout(15000),
+
+  function soapRequest(soapBody) {
+    return new Promise((resolve, reject) => {
+      const url = new URL(ADUANA_ENDPOINT);
+      const options = {
+        hostname: url.hostname,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          'SOAPAction': `"${SOAP_ACTION}"`,
+          'Content-Length': Buffer.byteLength(soapBody),
+        },
+      };
+      const req = require('https').request(options, (response) => {
+        let data = '';
+        response.on('data', chunk => data += chunk);
+        response.on('end', () => resolve(data));
+      });
+      req.on('error', reject);
+      req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+      req.write(soapBody);
+      req.end();
     });
-    const text = await response.text();
-    function extractTag(xml, tag) {
-      const match = xml.match(new RegExp(`<${tag}[^>]*>(.*?)<\/${tag}>`, 's'));
-      return match ? match[1].trim() : null;
-    }
-    const tieneCupo = extractTag(text, 'Tienecupo');
-    const error     = extractTag(text, 'Error');
-    const errores   = extractTag(text, 'Errores');
-    return res.json({ tieneCupo, error, errores });
+  }
+
+  function extractTag(xml, tag) {
+    const match = xml.match(new RegExp(`<${tag}[^>]*>(.*?)<\/${tag}>`, 's'));
+    return match ? match[1].trim() : null;
+  }
+
+  try {
+    const xmlResponse = await soapRequest(soap);
+    console.log('DNA RAW:', xmlResponse.slice(0, 1000));
+    const tieneCupo = extractTag(xmlResponse, 'Tienecupo');
+    const error     = extractTag(xmlResponse, 'Error');
+    const errores   = extractTag(xmlResponse, 'Errores');
+    return res.json({ tieneCupo, error, errores, _raw: xmlResponse.slice(0, 500) });
   } catch (err) {
+    console.error('Cupo EPI error:', err.message);
     return res.status(502).json({ error: 'No se pudo conectar con Aduana', detalle: err.message });
   }
 });
