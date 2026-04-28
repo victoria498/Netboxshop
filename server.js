@@ -628,6 +628,48 @@ function emailPagoConfirmado(client, order) {
   </body></html>`;
 }
 
+
+// CUPO EPI - DNA Aduana Uruguay
+app.post('/api/cupo', async (req, res) => {
+  const { documento, anio, monto } = req.body;
+  if (!documento || !anio || monto === undefined) {
+    return res.status(400).json({ error: 'Faltan campos: documento, anio, monto' });
+  }
+  const ADUANA_ENDPOINT = 'https://servicios.aduanas.gub.uy/LuciaWS/awscupoepi.aspx';
+  const SOAP_ACTION = 'www.aduanas.gub.uy/WSCupoEPIaction/AWSCUPOEPI.Execute';
+  const soap = `<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:wsc="www.aduanas.gub.uy/WSCupoEPI">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <wsc:WSCupoEPI.Execute>
+      <wsc:Documento>${documento}</wsc:Documento>
+      <wsc:Anio>${anio}</wsc:Anio>
+      <wsc:Montodolaresepi>${monto}</wsc:Montodolaresepi>
+    </wsc:WSCupoEPI.Execute>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+  try {
+    const response = await fetch(ADUANA_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/xml; charset=utf-8', 'SOAPAction': SOAP_ACTION },
+      body: soap,
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await response.text();
+    function extractTag(xml, tag) {
+      const match = xml.match(new RegExp(`<${tag}[^>]*>(.*?)<\/${tag}>`, 's'));
+      return match ? match[1].trim() : null;
+    }
+    const tieneCupo = extractTag(text, 'Tienecupo');
+    const error     = extractTag(text, 'Error');
+    const errores   = extractTag(text, 'Errores');
+    return res.json({ tieneCupo, error, errores });
+  } catch (err) {
+    return res.status(502).json({ error: 'No se pudo conectar con Aduana', detalle: err.message });
+  }
+});
+
 // REACTIVAR PEDIDO (from email link)
 app.get('/api/orders/reactivar', async (req, res) => {
   const { id, mail } = req.query;
